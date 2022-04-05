@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ryan.redcapAPIcall</string>
+    <key>WorkingDirectory</key>
+    <string>/Users/ryanschubert/Documents/API automation project/redcap_api_automation/</string>
+    <key>ProgramArguments</key>
+    <array>
+	<string>bash</string>
+        <string>run_main.sh</string>
+    </array>
+    <key>StandardOutPath</key>
+    <string>/Users/ryanschubert/log/myjob.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/ryanschubert/log/myjob.log</string>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>14</integer>
+        <key>Minute</key>
+        <integer>20</integer>
+    </dict>
+</dict>
+</plist>
