@@ -10,9 +10,11 @@ import pandas as pd
 from datetime import date,timedelta,datetime
 import numpy as np
 import os
-import seaborn as sns
-import shutil 
+from openpyxl import load_workbook, Workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.chart import LineChart,Reference,Series
 
+#pull df of individuals
 def identify_last_day_updates(apiToken,apiURL): #this function identifies each unique MRN that either has an updated response action or a created record action in the last 24 hours
     last_24_hours=str(date.today()-timedelta(days=1)) + " 00:00"
     data = {
@@ -115,73 +117,8 @@ def clean_records(df):
     relevant_records=relevant_records.loc[~relevant_records['mrn'].isin(monovalue_records)]
     return(relevant_records)
 
-def create_plot_obj(mrn,df):
-    tmp=df.loc[df['mrn'] == mrn]
-    tmp=tmp.loc[tmp['redcap_event_name'].str.contains('arm_1')]
-
-    condlist=[tmp['redcap_event_name'].str.contains("baseline"),
-              tmp['redcap_event_name'].str.contains("monday_week_1_arm_1"),
-              tmp['redcap_event_name'].str.contains("tuesday_week_1_arm_1"),
-              tmp['redcap_event_name'].str.contains("wednesday_week_1_arm_1"),
-              tmp['redcap_event_name'].str.contains("thursday_week_1_arm_1"),
-              tmp['redcap_event_name'].str.contains("friday_week_1_arm_1"),
-              tmp['redcap_event_name'].str.contains("monday_week_2_arm_1"),
-              tmp['redcap_event_name'].str.contains("tuesday_week_2_arm_1"),
-              tmp['redcap_event_name'].str.contains("wednesday_week_2_arm_1"),
-              tmp['redcap_event_name'].str.contains("thursday_week_2_arm_1"),
-              tmp['redcap_event_name'].str.contains("posttreatment_ques_arm_1"),
-              tmp['redcap_event_name'].str.contains("1_month_followup_arm_1"),
-              tmp['redcap_event_name'].str.contains("3_month_followup_arm_1"),
-              tmp['redcap_event_name'].str.contains("6_month_followup_arm_1"),
-              tmp['redcap_event_name'].str.contains("12_month_followup_arm_1")]
-    choicelist=["Baseline",
-                "Mon w1",
-                "Tue w1",
-                "Wed w1",
-                "Thur w1",
-                "Fri w1",
-                "Mon w2",
-                "Tue w2",
-                "Wed w2",
-                "Thur w2",
-                "Post",
-                "1Mon",
-                "3Mon",
-                "6Mon",
-                "12Mon"]
-    tmp['redcap_event_name']=np.select(condlist,choicelist,"null")
-    dat=tmp.drop(['first_name','last_name','date','pcl5_score_all'],axis=1)
-    
-    tmp=tmp.drop(["pcl5_score",'pcl5_score_pastmonth','cohort','first_name','last_name','date'],axis=1)
-    
-    tmp=pd.melt(tmp,id_vars=['mrn','redcap_event_name'],value_vars=['phq9_score','phq9s_score', 'ptci_score', 'pcl5_score_all'])
-#    tmp=tmp.loc[tmp['value'] == tmp['value']]
-    condlist=[tmp['variable'].str.contains("pcl5_score_all"),
-              tmp['variable'].str.contains("ptci_score"),
-              tmp['variable'].str.contains("phq9_score"),
-              tmp['variable'].str.contains("phq9s_score")]
-    choicelist=["PCL-5",
-                "PTCI",
-                "PHQ-9",
-                "PHQ-9s"]
-    tmp['variable']=np.select(condlist,choicelist,"null")
-    
-    sns.set(rc={'figure.figsize':(28,20),'figure.dpi':(300)})
-    g=sns.FacetGrid(tmp,col="variable",sharey=False,col_wrap=2)
-    g.axes[0].set_ylim(0,27)
-    g.axes[1].set_ylim(0,4)
-    g.axes[2].set_ylim(0,250)
-    g.axes[3].set_ylim(0,80)
-    g.axes[0].set_xticklabels(g.axes[0].get_xticklabels(), rotation=45)
-    g.axes[1].set_xticklabels(g.axes[1].get_xticklabels(), rotation=45)
-    g.axes[2].set_xticklabels(g.axes[2].get_xticklabels(), rotation=45)
-    g.axes[3].set_xticklabels(g.axes[3].get_xticklabels(), rotation=45)
-    p=g.map_dataframe(sns.pointplot,x="redcap_event_name",y="value")
-    p2 = g.map_dataframe(sns.lineplot,x="redcap_event_name",y="value",lw=2.5)
-    p.set_titles('{col_name}')
-    return p, dat
-    
-def lookup_cohort(mrn,df):
+#extract the vector of cohort numbers
+def lookup_cohorts(df):
     cohort=df.loc[df['mrn']==mrn]['cohort'].dropna().reset_index(drop=True)[0]
     return cohort
 
@@ -194,20 +131,101 @@ def lookup_cohort_startdate(cohort_num,df):
     year=str(min(tmp).year)
     return sd, year
 
-def lookup_initials(mrn,df):
-    tmp=df.loc[df['mrn'] == mrn]
-    tmp=tmp[['first_name','last_name']]
-    tmp=tmp.loc[(tmp['first_name'] == tmp['first_name']) & (tmp['last_name'] == tmp['last_name'])]
-    initials=tmp.iloc[0,0][0] + tmp.iloc[0,1][0]
-    return(initials)
-#lookup outdir or create one if none exists
-def get_outpath(root_out,mrn,cohort_num,sd,year,initials):
+
+def get_outpath(root_out,sd,year):
     if not root_out.endswith("/"):
         root_out=root_out + "/"
-    outpath=root_out + year + "/" + sd + "/" + "COHORT" + "_" + cohort_num +"/" + initials + "_" + mrn + "/"
+    outpath=root_out + year + "/" + sd + "/"
     if not os.path.isdir(outpath):
         os.makedirs(outpath)
     return outpath
+
+
+
+def initialize_workbook(outpath): #workbook initialization happens on a per cohort basis
+    wb = Workbook()
+    ws1=wb.active()
+    ws1.title = "Sheet 1"
+    wb.save(outpath + "Score Tracking.xlsx")
+    wb.close()
+    return
+
+
+def target_workbook(outpath):
+    files=os.listdir(outpath)
+    if "Score Tracking.xlsx" in files:
+        return(outpath + "Score Tracking.xlsx")
+    else:
+        file=initialize_workbook(outpath)
+        return(file)
+
+def initialize_sheet(targetWB,ID): #happens on a per individual basis
+    wb = load_workbook(targetWB)
+    newSheet=wb.create_sheet(ID)
+    #add columns
+    newSheet['A1'] = "Cohort"
+    newSheet['B1'] = "MRN"
+    newSheet['C1'] = "Date"
+    newSheet['D1'] = "Day"
+    newSheet['E1'] = "PCL-5"
+    newSheet['F1'] = "PHQ-9"
+    newSheet['G1'] = "PHQ-9s"
+    newSheet['H1'] = "PTCI"
+    #add graphics
+    c1 = LineChart()
+    c1.title = "PCL-5"
+    c1.style=13
+    c1.legend=None
+    data = Reference(newSheet,min_col=5,max_col=5,min_row=2,max_row=14)
+    c1.series.append(Series(data))
+    labels = Reference(newSheet,min_col=3,min_row=2,max_row=14)
+    c1.set_categories(labels)
+    s1=c1.series[0]
+    s1.graphicalProperties.line.solidfill = "0066CC"
+    newSheet.add_chart(c1, 'J2')
+    
+    c2 = LineChart()
+    c2.title = "PHQ-9"
+    c2.style=13
+    c2.legend=None
+    data = Reference(newSheet,min_col=6,min_row=2,max_row=14)
+    c2.series.append(Series(data))
+    labels = Reference(newSheet,min_col=3,min_row=2,max_row=14)
+    c2.set_categories(labels)
+    s2=c2.series[0]
+    s2.graphicalProperties.line.solidfill = "0066CC"
+    newSheet.add_chart(c2, 'B17')
+    
+    c3 = LineChart()
+    c3.title = "PHQ-9s"
+    c3.style=13
+    c3.legend=None
+    data = Reference(newSheet,min_col=7,min_row=2,max_row=14)
+    c3.series.append(Series(data))
+    labels = Reference(newSheet,min_col=3,min_row=2,max_row=14)
+    c3.set_categories(labels)
+    s3=c3.series[0]
+    s3.graphicalProperties.line.solidfill = "0066CC"
+    newSheet.add_chart(c3, 'H17')
+    
+    c4 = LineChart()
+    c4.title = "PTCI"
+    c4.style=13
+    c4.legend=None
+    data = Reference(newSheet,min_col=8,min_row=2,max_row=14)
+    c4.series.append(Series(data))
+    labels = Reference(newSheet,min_col=3,min_row=2,max_row=14)
+    c4.set_categories(labels)
+    s4=c4.series[0]
+    s4.graphicalProperties.line.solidfill = "0066CC"
+    newSheet.add_chart(c4, 'P17')
+    wb.save(targetWB)
+    wb.close()
+    
+
+def update_sheet(targetWB,ID):
+    h
+#lookup outdir or create one if none exists
 
 def preverify_SSL():
     try:
@@ -218,21 +236,7 @@ def preverify_SSL():
         print(requests.exceptions.SSLError)
         exit()
 
-def archive_previous(root_out,mrn,cohort_num,sd,year,initials):
-    timestamp="archival_timestamp_" + datetime.now().strftime("%m.%d.%Y_%H.%M")
-    if not os.path.isdir(root_out + year + "/" + sd + "/" + "COHORT" + "_" + cohort_num +"/" + initials + "_" + mrn + "/archive/"):
-        os.makedirs(root_out + year + "/" + sd + "/" + "COHORT" + "_" + cohort_num +"/" + initials + "_" + mrn + "/archive/")
-    os.makedirs(root_out + year + "/" + sd + "/" + "COHORT" + "_" + cohort_num +"/" + initials + "_" + mrn + "/archive/" + initials + "_" + mrn + "_" +timestamp)
-    png_out=root_out + year + "/" + sd + "/" + "COHORT" + "_" + cohort_num +"/" + initials + "_" + mrn + "/" + initials + "_" + mrn + ".png"
-    csv_out=root_out + year + "/" + sd + "/" + "COHORT" + "_" + cohort_num +"/" + initials + "_" + mrn + "/" + initials + "_" + mrn + "_summary.csv"
-    if os.path.isfile(png_out):
-        shutil.move(png_out, root_out + year + "/" + sd + "/" + "COHORT" + "_" + cohort_num +"/" + initials + "_" + mrn + "/archive/" + initials + "_" + mrn + "_" + timestamp+ "/" + initials + "_" + mrn + ".png")
-    if os.path.isfile(csv_out):
-        shutil.move(csv_out, root_out + year + "/" + sd + "/" + "COHORT" + "_" + cohort_num +"/" + initials + "_" + mrn + "/archive/" + initials + "_" + mrn + "_" + timestamp+ "/" + initials + "_" + mrn + "_summary.csv")
-    if len(os.listdir(root_out + year + "/" + sd + "/" + "COHORT" + "_" + cohort_num +"/" + initials + "_" + mrn + "/archive/" + initials + "_" + mrn + "_" + timestamp + "/")) != 0 :
-        shutil.make_archive(root_out + year + "/" + sd + "/" + "COHORT" + "_" + cohort_num +"/" + initials + "_" + mrn + "/archive/" + initials + "_" + mrn + "_" + timestamp + ".zip",'zip',root_out + year + "/" + sd + "/" + "COHORT" + "_" + cohort_num +"/" + initials + "_" + mrn + "/archive/" + initials + "_" + mrn + "_" + timestamp + "/")
-        shutil.rmtree(root_out + year + "/" + sd + "/" + "COHORT" + "_" + cohort_num +"/" + initials + "_" + mrn + "/archive/" + initials + "_" + mrn + "_" + timestamp + "/")
-    
+
 def main(apiToken,apiURL,root_out):
     preverify_SSL()
     mrns=identify_last_day_updates(apiToken,apiURL)
@@ -244,6 +248,7 @@ def main(apiToken,apiURL,root_out):
         cohort_number=lookup_cohort(mrn=mrn,df=records)
         start,year=lookup_cohort_startdate(cohort_num=cohort_number,df=records)
         initials=lookup_initials(mrn=mrn,df=records)
+        
         outpath=get_outpath(root_out=root_out,mrn=mrn,cohort_num=cohort_number,sd=start,year=year,initials=initials)
         archive_previous(root_out=root_out,mrn=mrn,cohort_num=cohort_number,sd=start,year=year,initials=initials)
         p,dat=create_plot_obj(mrn=mrn,df=records)
