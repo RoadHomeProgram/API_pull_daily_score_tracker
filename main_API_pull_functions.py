@@ -7,11 +7,10 @@ Created on Tue Mar 29 11:35:57 2022
 """
 import requests
 import pandas as pd
-from datetime import date,timedelta,datetime
+from datetime import date,timedelta
 import numpy as np
 import os
 from openpyxl import load_workbook, Workbook
-from openpyxl.utils import get_column_letter
 from openpyxl.chart import LineChart,Reference,Series
 
 #pull df of individuals
@@ -103,7 +102,7 @@ def extract_complete_record_set(mrns,apiToken,apiURL):
     return complete_records
 
 def clean_records(df):
-    relevant_records=df[['mrn','first_name','last_name','date','redcap_event_name','cohort','pcl5_score','pcl5_score_pastmonth','phq9_score','phq9s_score','ptci_score']]
+    relevant_records=df[['mrn','first_name','last_name','startdate','date','redcap_event_name','cohort','pcl5_score','pcl5_score_pastmonth','phq9_score','phq9s_score','ptci_score']]
     relevant_records=relevant_records.assign(pcl5_score_all=np.where(relevant_records['pcl5_score']=="",relevant_records['pcl5_score_pastmonth'],relevant_records['pcl5_score']))
     relevant_records=relevant_records.loc[relevant_records['redcap_event_name'].str.contains('arm_1')]
     relevant_records=relevant_records.replace("",np.NaN)
@@ -115,40 +114,80 @@ def clean_records(df):
     relevant_records['ptci_score'] = relevant_records['ptci_score'].astype(float)
     monovalue_records=relevant_records['mrn'].value_counts()[relevant_records['mrn'].value_counts()==1].index.tolist()
     relevant_records=relevant_records.loc[~relevant_records['mrn'].isin(monovalue_records)]
+    condlist=[relevant_records['redcap_event_name'].str.contains("baseline"),
+    relevant_records['redcap_event_name'].str.contains("monday_week_1_arm_1"),
+    relevant_records['redcap_event_name'].str.contains("tuesday_week_1_arm_1"),
+    relevant_records['redcap_event_name'].str.contains("wednesday_week_1_arm_1"),
+    relevant_records['redcap_event_name'].str.contains("thursday_week_1_arm_1"),
+    relevant_records['redcap_event_name'].str.contains("friday_week_1_arm_1"),
+    relevant_records['redcap_event_name'].str.contains("monday_week_2_arm_1"),
+    relevant_records['redcap_event_name'].str.contains("tuesday_week_2_arm_1"),
+    relevant_records['redcap_event_name'].str.contains("wednesday_week_2_arm_1"),
+    relevant_records['redcap_event_name'].str.contains("thursday_week_2_arm_1"),
+    relevant_records['redcap_event_name'].str.contains("posttreatment_ques_arm_1"),
+    relevant_records['redcap_event_name'].str.contains("1_month_followup_arm_1"),
+    relevant_records['redcap_event_name'].str.contains("3_month_followup_arm_1"),
+    relevant_records['redcap_event_name'].str.contains("6_month_followup_arm_1"),
+    relevant_records['redcap_event_name'].str.contains("12_month_followup_arm_1")]
+    choicelist=["Intake",
+                 "Mon w1",
+                 "Tue w1",
+                 "Wed w1",
+                 "Thur w1",
+                 "Fri w1",
+                 "Mon w1",
+                 "Tue w2",
+                 "Wed w2",
+                 "Thur w2",
+                 "Post",
+                 "1 Mon",
+                 "3 Mon",
+                 "6 Mon",
+                 "12 Mon"]
+    relevant_records['redcap_event_name']=np.select(condlist,choicelist,"null")
     return(relevant_records)
 
+
+def subset_records(mrn,df):
+    tmp=df.loc[df['mrn'] == mrn]
+    return tmp
+
 #extract the vector of cohort numbers
-def lookup_cohorts(df):
+def lookup_cohort(df,mrn):
     cohort=df.loc[df['mrn']==mrn]['cohort'].dropna().reset_index(drop=True)[0]
     return cohort
 
 def lookup_cohort_startdate(cohort_num,df):
     tmp=df.loc[(df['cohort']==cohort_num)]['mrn']
     tmp=df.loc[df['mrn'].isin(tmp)]
-    tmp=tmp.loc[(tmp['redcap_event_name'] == "monday_week_1_arm_1")]['date']
+    tmp=tmp.loc[(tmp['redcap_event_name'] == "Mon w1")]['date']
     tmp=pd.to_datetime(tmp,format="%Y-%m-%d")
     sd=min(tmp).month_name() + " " + str(min(tmp).date().day)
     year=str(min(tmp).year)
     return sd, year
 
+def lookup_initials(mrn,df):
+     tmp=df.loc[df['mrn'] == mrn]
+     tmp=tmp[['first_name','last_name']]
+     tmp=tmp.loc[(tmp['first_name'] == tmp['first_name']) & (tmp['last_name'] == tmp['last_name'])]
+     initials=tmp.iloc[0,0][0] + tmp.iloc[0,1][0]
+     return(initials)
 
-def get_outpath(root_out,sd,year):
-    if not root_out.endswith("/"):
-        root_out=root_out + "/"
-    outpath=root_out + year + "/" + sd + "/"
+def get_outpath(root_out,sd,year): #lookup outdir or create one if none exists
+    if not root_out.endswith("\\"):
+        root_out=root_out + "\\"
+    outpath=root_out + year + "\\" + sd + "\\"
     if not os.path.isdir(outpath):
         os.makedirs(outpath)
     return outpath
 
-
-
 def initialize_workbook(outpath): #workbook initialization happens on a per cohort basis
     wb = Workbook()
-    ws1=wb.active()
+    ws1=wb.active
     ws1.title = "Sheet 1"
     wb.save(outpath + "Score Tracking.xlsx")
     wb.close()
-    return
+    return outpath + "Score Tracking.xlsx"
 
 
 def target_workbook(outpath):
@@ -171,61 +210,149 @@ def initialize_sheet(targetWB,ID): #happens on a per individual basis
     newSheet['F1'] = "PHQ-9"
     newSheet['G1'] = "PHQ-9s"
     newSheet['H1'] = "PTCI"
+    
+    newSheet['D2'] = "Intake"
+    newSheet['D3'] = "Mon w1"
+    newSheet['D4'] = "Tue w1"
+    newSheet['D5'] = "Wed w1"
+    newSheet['D6'] = "Thur w1"
+    newSheet['D7'] = "Fri w1"
+    newSheet['D8'] = "Mon w2"
+    newSheet['D9'] = "Tue w2"
+    newSheet['D10'] = "Wed w2"
+    newSheet['D11'] = "Thur w2"
+    newSheet['D12'] = "Post"
+    newSheet['D13'] = "1 Mon"
+    newSheet['D14'] = "3 Mon"
+    newSheet['D15'] = "6 Mon"
+    newSheet['D16'] = "12 Mon"
+    
     #add graphics
     c1 = LineChart()
     c1.title = "PCL-5"
     c1.style=13
     c1.legend=None
-    data = Reference(newSheet,min_col=5,max_col=5,min_row=2,max_row=14)
+    c1.display_blanks = "span"
+    c1.y_axis.scaling.min = 0
+    c1.y_axis.scaling.max = 80
+    data = Reference(newSheet,min_col=5,max_col=5,min_row=2,max_row=16)
     c1.series.append(Series(data))
-    labels = Reference(newSheet,min_col=3,min_row=2,max_row=14)
+    labels = Reference(newSheet,min_col=4,min_row=2,max_row=16)
     c1.set_categories(labels)
     s1=c1.series[0]
     s1.graphicalProperties.line.solidfill = "0066CC"
+    s1.marker.symbol="triangle"
+    s1.marker.graphicalProperties.solidFill="0066CC"
     newSheet.add_chart(c1, 'J2')
     
     c2 = LineChart()
     c2.title = "PHQ-9"
     c2.style=13
     c2.legend=None
-    data = Reference(newSheet,min_col=6,min_row=2,max_row=14)
+    c2.display_blanks = "span"
+    c2.y_axis.scaling.min = 0
+    c2.y_axis.scaling.max = 27
+    data = Reference(newSheet,min_col=6,min_row=2,max_row=16)
     c2.series.append(Series(data))
-    labels = Reference(newSheet,min_col=3,min_row=2,max_row=14)
+    labels = Reference(newSheet,min_col=4,min_row=2,max_row=16)
     c2.set_categories(labels)
     s2=c2.series[0]
     s2.graphicalProperties.line.solidfill = "0066CC"
-    newSheet.add_chart(c2, 'B17')
+    s2.marker.symbol="triangle"
+    s2.marker.graphicalProperties.solidFill="0066CC"
+    newSheet.add_chart(c2, 'S2')
     
     c3 = LineChart()
     c3.title = "PHQ-9s"
     c3.style=13
     c3.legend=None
-    data = Reference(newSheet,min_col=7,min_row=2,max_row=14)
+    c3.display_blanks = "span"
+    c3.y_axis.scaling.min = 0
+    c3.y_axis.scaling.max = 3
+    data = Reference(newSheet,min_col=7,min_row=2,max_row=16)
     c3.series.append(Series(data))
-    labels = Reference(newSheet,min_col=3,min_row=2,max_row=14)
+    labels = Reference(newSheet,min_col=4,min_row=2,max_row=16)
     c3.set_categories(labels)
     s3=c3.series[0]
     s3.graphicalProperties.line.solidfill = "0066CC"
-    newSheet.add_chart(c3, 'H17')
+    s3.marker.symbol="triangle"
+    s3.marker.graphicalProperties.solidFill="0066CC"
+    newSheet.add_chart(c3, 'J17')
     
     c4 = LineChart()
     c4.title = "PTCI"
     c4.style=13
     c4.legend=None
-    data = Reference(newSheet,min_col=8,min_row=2,max_row=14)
+    c4.display_blanks = "span"
+    c4.y_axis.scaling.min = 33
+    c4.y_axis.scaling.max = 231
+    data = Reference(newSheet,min_col=8,min_row=2,max_row=16)
     c4.series.append(Series(data))
-    labels = Reference(newSheet,min_col=3,min_row=2,max_row=14)
+    labels = Reference(newSheet,min_col=4,min_row=2,max_row=16)
     c4.set_categories(labels)
     s4=c4.series[0]
     s4.graphicalProperties.line.solidfill = "0066CC"
-    newSheet.add_chart(c4, 'P17')
+    s4.marker.symbol="triangle"
+    s4.marker.graphicalProperties.solidFill="0066CC"
+    newSheet.add_chart(c4, 'S17')
     wb.save(targetWB)
     wb.close()
     
 
-def update_sheet(targetWB,ID):
-    h
-#lookup outdir or create one if none exists
+def update_sheet(df,targetWB,ID):
+    condlist=[df['redcap_event_name'].str.contains("Intake"),
+       df['redcap_event_name'].str.contains("Mon w1"),
+       df['redcap_event_name'].str.contains("Tue w1"),
+       df['redcap_event_name'].str.contains("Wed w1"),
+       df['redcap_event_name'].str.contains("Thur w1"),
+       df['redcap_event_name'].str.contains("Fri w1"),
+       df['redcap_event_name'].str.contains("Mon w2"),
+       df['redcap_event_name'].str.contains("Tue w2"),
+       df['redcap_event_name'].str.contains("Wed w2"),
+       df['redcap_event_name'].str.contains("Thur w2"),
+       df['redcap_event_name'].str.contains("Post"),
+       df['redcap_event_name'].str.contains("1 Mon"),
+       df['redcap_event_name'].str.contains("3 Mon"),
+       df['redcap_event_name'].str.contains("6 Mon"),
+       df['redcap_event_name'].str.contains("12 Mon")]
+    choicelist=["2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16"]
+    df['row']=np.select(condlist,choicelist,"null")
+    df=df.loc[df.row != "null"]
+    
+    wb = load_workbook(targetWB)
+    if ID not in wb.sheetnames:
+        wb.close()
+        initialize_sheet(targetWB,ID)
+        wb = load_workbook(targetWB)
+    ws = wb[ID]
+    for index, row in df.iterrows():
+        r=row['row']
+        ws['A' + r]=row['cohort']
+        ws['B' + r]=row['mrn']
+        ws['C' + r]=row['date']
+        ws['E' + r]=row['pcl5_score_all']
+        ws['F' + r]=row['phq9_score']
+        ws['G' + r]=row['phq9s_score']
+        ws['H' + r]=row['ptci_score']
+    wb.save(targetWB)
+    wb.close()
+    
+    
+
 
 def preverify_SSL():
     try:
@@ -248,9 +375,7 @@ def main(apiToken,apiURL,root_out):
         cohort_number=lookup_cohort(mrn=mrn,df=records)
         start,year=lookup_cohort_startdate(cohort_num=cohort_number,df=records)
         initials=lookup_initials(mrn=mrn,df=records)
-        
-        outpath=get_outpath(root_out=root_out,mrn=mrn,cohort_num=cohort_number,sd=start,year=year,initials=initials)
-        archive_previous(root_out=root_out,mrn=mrn,cohort_num=cohort_number,sd=start,year=year,initials=initials)
-        p,dat=create_plot_obj(mrn=mrn,df=records)
-        dat.to_csv(outpath + initials + "_" + mrn + "_summary.csv")
-        p.savefig(fname=outpath + initials + "_" + mrn + ".png")
+        outpath=get_outpath(root_out=root_out,sd=start,year=year)
+        targetWB=target_workbook(outpath)
+        subset=subset_records(mrn=mrn, df=records)
+        update_sheet(df=subset,targetWB=targetWB, ID = initials + "_" + mrn)
