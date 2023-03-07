@@ -14,7 +14,7 @@ from openpyxl import load_workbook, Workbook
 from openpyxl.chart import LineChart,Reference,Series
 
 #pull df of individuals
-def identify_last_day_updates(api,apiURL): #this function identifies each unique MRN that either has an updated response action or a created record action in the last 24 hours
+def identify_last_day_updates(apiToken,apiURL): #this function identifies each unique MRN that either has an updated response action or a created record action in the last 24 hours
     last_24_hours=str(date.today()-timedelta(days=1)) + " 00:00"
     data = {
         'token': apiToken,
@@ -174,9 +174,9 @@ def lookup_initials(mrn,df):
      return(initials)
 
 def get_outpath(root_out,sd,year): #lookup outdir or create one if none exists
-    if not root_out.endswith("\\"):
-        root_out=root_out + "\\"
-    outpath=root_out + year + "\\" + sd + "\\"
+    if not root_out.endswith("/"):
+        root_out=root_out + "/"
+    outpath=root_out + year + "/" + sd + "/"
     if not os.path.isdir(outpath):
         os.makedirs(outpath)
     return outpath

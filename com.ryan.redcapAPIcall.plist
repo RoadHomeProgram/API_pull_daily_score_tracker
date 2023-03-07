@@ -6,16 +6,16 @@
     <key>Label</key>
     <string>com.ryan.redcapAPIcall</string>
     <key>WorkingDirectory</key>
-    <string>/Users/ryanschubert/Documents/API automation project/redcap_api_automation/</string>
+    <string>/Users/rschuber/Documents/API_pull_daily_score_tracker</string>
     <key>ProgramArguments</key>
     <array>
 	<string>bash</string>
         <string>run_main.sh</string>
     </array>
     <key>StandardOutPath</key>
-    <string>/Users/ryanschubert/log/myjob.log</string>
+    <string>/Users/rschuber/Documents/API_pull_daily_score_tracker/log/myjob.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/ryanschubert/log/myjob.log</string>
+    <string>/Users/rschuber/Documents/API_pull_daily_score_tracker/err/myjob.log</string>
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>
