@@ -12,7 +12,8 @@ import numpy as np
 import os
 from openpyxl import load_workbook, Workbook
 from openpyxl.chart import LineChart,Reference,Series
-
+import json
+from math import isnan
 #pull df of individuals
 def identify_last_day_updates(apiToken,apiURL): #this function identifies each unique MRN that either has an updated response action or a created record action in the last 24 hours
     last_24_hours=str(date.today()-timedelta(days=1)) + " 00:00"
@@ -29,9 +30,9 @@ def identify_last_day_updates(apiToken,apiURL): #this function identifies each u
     }
     r = requests.post(apiURL,data=data)
     r.raise_for_status()
-    tmp=pd.DataFrame(r.json())
-    tmp=tmp[tmp['action'].str.contains("Updated Response|Created Record")]
-    mrn=tmp['action'].str.replace("Updated Response|Created Record|(Auto calculation)","").str.replace("(","").str.replace(")","").str.strip().unique()
+    tmp=pd.DataFrame([json.loads(i) for i in r.json()])
+    tmp=tmp[tmp['action'].str.contains("Update Response|Create Record")]
+    mrn=tmp['action'].str.replace("Update Response|Create Record|(Auto calculation)","").str.replace("(","").str.replace(")","").str.strip().unique()
     return mrn
 
 def extract_data(mrn,apiToken,apiURL): #this function extracts all exisiting pcl,ptci, and phq redcap data for a given mrn
@@ -154,8 +155,9 @@ def subset_records(mrn,df):
 
 #extract the vector of cohort numbers
 def lookup_cohort(df,mrn):
-    cohort=df.loc[df['mrn']==mrn]['cohort'].dropna().reset_index(drop=True)[0]
-    return cohort
+    cohort=df.loc[df['mrn']==mrn]['cohort']
+    num=cohort[cohort.apply(lambda x: isinstance(x,str))]
+    return num[num.index[0]]
 
 def lookup_cohort_startdate(cohort_num,df):
     tmp=df.loc[(df['cohort']==cohort_num)]['mrn']
